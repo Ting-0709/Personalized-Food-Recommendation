@@ -23,10 +23,10 @@ function inferHostFromRuntime(): string | null {
 }
 
 export function resolveApiBaseUrl(): string {
-  if (Platform.OS === 'web') return 'http://localhost:5000';
-
   const explicitUrl = process.env.EXPO_PUBLIC_API_BASE_URL?.trim();
   if (explicitUrl) return explicitUrl;
+
+  if (Platform.OS === 'web') return 'http://localhost:5000';
 
   const explicitHost = process.env.EXPO_PUBLIC_API_HOST?.trim();
   if (explicitHost) return `http://${explicitHost}:5000`;
