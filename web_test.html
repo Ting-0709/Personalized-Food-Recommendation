@@ -1,0 +1,117 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI 營養師辨識測試</title>
+    <style>
+        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; padding: 20px; max-width: 600px; margin: auto; background-color: #f7f9fc; }
+        h1 { color: #2c3e50; text-align: center; }
+        .card { background: white; padding: 20px; border-radius: 12px; box-shadow: 0 4px 6px rgba(0,0,0,0.1); margin-bottom: 20px; }
+        .btn { background-color: #007bff; color: white; border: none; padding: 12px 20px; width: 100%; border-radius: 8px; font-size: 16px; font-weight: bold; cursor: pointer; margin-top: 10px; }
+        .btn:disabled { background-color: #ccc; }
+        input[type="file"] { display: block; margin: 10px 0; width: 100%; }
+        input[type="text"] { width: calc(100% - 20px); padding: 10px; margin: 10px 0; border-radius: 8px; border: 1px solid #ccc; }
+        img { max-width: 100%; border-radius: 8px; margin-top: 10px; display: none; }
+        pre { background: #1e1e1e; color: #d4d4d4; padding: 15px; border-radius: 8px; overflow-x: auto; font-size: 14px; }
+        .loading { text-align: center; display: none; color: #666; font-weight: bold; margin-top: 10px; }
+    </style>
+</head>
+<body>
+
+    <h1>🥗 AI 營養師測試站</h1>
+
+    <div class="card">
+        <label for="apiKey"><strong>Gemini API Key:</strong></label>
+        <input type="text" id="apiKey" placeholder="請貼上你的 Gemini API Key">
+
+        <label for="imageInput"><strong>上傳或拍攝食物照片:</strong></label>
+        <input type="file" id="imageInput" accept="image/*" capture="environment">
+        
+        <img id="preview" src="" alt="預覽圖片">
+
+        <button id="submitBtn" class="btn">🚀 送出分析</button>
+        <div id="loading" class="loading">正在呼叫 AI 營養師分析中，請稍候...</div>
+    </div>
+
+    <div class="card" id="resultCard" style="display: none;">
+        <h3>📊 分析結果</h3>
+        <pre id="resultJson"></pre>
+    </div>
+
+    <script>
+        const imageInput = document.getElementById('imageInput');
+        const preview = document.getElementById('preview');
+        const submitBtn = document.getElementById('submitBtn');
+        const loading = document.getElementById('loading');
+        const resultCard = document.getElementById('resultCard');
+        const resultJson = document.getElementById('resultJson');
+        const apiKeyInput = document.getElementById('apiKey');
+
+        let base64Image = null;
+
+        // 圖片預覽與轉 Base64
+        imageInput.addEventListener('change', function(e) {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const reader = new FileReader();
+            reader.onload = function(event) {
+                preview.src = event.target.result;
+                preview.style.display = 'block';
+                // 移除 base64 字串前面的 "data:image/jpeg;base64," 
+                base64Image = event.target.result.split(',')[1];
+            };
+            reader.readAsDataURL(file);
+        });
+
+        submitBtn.addEventListener('click', async function() {
+            if (!base64Image) {
+                alert('請先選擇或拍攝一張照片！');
+                return;
+            }
+            if (!apiKeyInput.value) {
+                alert('請填寫 Gemini API Key！');
+                return;
+            }
+
+            submitBtn.disabled = true;
+            loading.style.display = 'block';
+            resultCard.style.display = 'none';
+
+            // 修改這裡的 IP 為你的電腦區域網路 IP
+            const apiUrl = "http://127.0.0.1:5000/predict";
+
+            const payload = {
+                image: base64Image,
+                api_key: apiKeyInput.value.trim(),
+                health_conditions: ["高血壓"], 
+                allergens: ["甲殼類"]
+            };
+
+            try {
+                const response = await fetch(apiUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload)
+                });
+
+                const data = await response.json();
+                
+                if (!response.ok) {
+                    throw new Error(data.error || '未知的伺服器錯誤');
+                }
+
+                resultJson.textContent = JSON.stringify(data, null, 2);
+                resultCard.style.display = 'block';
+
+            } catch (error) {
+                alert('連線失敗或發生錯誤：\n' + error.message);
+            } finally {
+                submitBtn.disabled = false;
+                loading.style.display = 'none';
+            }
+        });
+    </script>
+</body>
+</html>
