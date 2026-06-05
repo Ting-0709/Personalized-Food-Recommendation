@@ -233,7 +233,35 @@ export default function ScannerScreen() {
 
   const handleCamera = async () => {
     if (isWeb) {
-      setScanResult(SCANNER_DEMO_RESULTS);
+      try {
+        const result = await ImagePicker.launchCameraAsync({
+          mediaTypes: ['images'],
+          base64: true,
+          quality: 0.5,
+        });
+
+        if (result.canceled) return;
+        setScanning(true);
+
+        const asset = result.assets[0];
+        let base64Data = asset.base64;
+        if (!base64Data && asset.uri) {
+          base64Data = await getBase64FromUri(asset.uri);
+        }
+
+        if (base64Data) {
+          const ok = await handlePrediction(base64Data);
+          if (ok) return;
+          AlertWeb.alert('辨識結果', '照片中似乎沒有偵測到任何食物項目。');
+        } else {
+          AlertWeb.alert('圖片錯誤', '無法讀取圖片 Base64 資料');
+        }
+      } catch (error: any) {
+        console.error('[Scanner] Web 相機啟動失敗:', error);
+        AlertWeb.alert('啟動相機失敗', error?.message || '您的設備或瀏覽器不支援相機拍照，請使用「相簿上傳」功能。');
+      } finally {
+        setScanning(false);
+      }
       return;
     }
 
