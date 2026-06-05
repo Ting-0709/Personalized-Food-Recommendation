@@ -133,7 +133,7 @@ def build_preference_profile(records: list[dict]) -> dict:
 
     for record in records:
         for food in record.get("foods") or []:
-            name = (food.get("name") or "").strip()
+            name = (food.get("name") or food.get("foodName") or "").strip()
             if name:
                 foods.append(name)
             source = food.get("source") or record.get("source")
@@ -263,14 +263,77 @@ def build_recommendation_response(storage, nutrition_db: dict, tfda_db: dict, di
     recent_foods = []
     for r in recent_records:
         for f in r.get("foods", []):
-            if f.get("name"):
-                recent_foods.append(f.get("name"))
+            fname = f.get("name") or f.get("foodName")
+            if fname:
+                recent_foods.append(fname)
     recent_foods = list(set(recent_foods))[:15]
 
-    # 從美食地圖菜單彙整日常推薦候選品項
+    # 1. 取得近期紀錄的 Preference Profile
+    profile = build_preference_profile(recent_records)
+
+    # 2. 獲取所有本地及自訂的食物候選人
+    candidates = build_recommendation_candidates(storage, nutrition_db, tfda_db, user_id)
+    
+    # 3. 對候選人進行過濾與偏好評分
+    from services.predict_service import check_food_safety
+    
+    scored_candidates = []
+    for c in candidates:
+        # 硬性過濾：疾病禁忌與過敏原
+        warnings = check_food_safety(c, 100, conditions, allergens, disease_rules)
+        if warnings:
+            continue
+        
+        # 口味偏好與營養符合度評分
+        pref_score, pref_reasons = compute_preference_score(c, profile)
+        
+        scored_candidates.append({
+            "candidate": c,
+            "pref_score": pref_score,
+            "pref_reasons": pref_reasons
+        })
+        
+    # 按 pref_score 從高到低排序，選前 30 名
+    scored_candidates.sort(key=lambda x: x["pref_score"], reverse=True)
+    top_candidates = scored_candidates[:30]
+    
+    # 4. 彙整日常推薦候選品項
     menu_items = []
+    
+    # 加入本地高契合度食品
+    for tc in top_candidates:
+        c = tc["candidate"]
+        menu_items.append({
+            "restaurant_name": "日常推薦食材 (資料庫)",
+            "item_name": c["name_zh"],
+            "price": 0,
+            "calories": c["calories"],
+            "protein": c["protein"],
+            "carbs": c["carbs"],
+            "fat": c["fat"],
+            "sodium": c["sodium"],
+            "gi": c.get("gi") or "medium",
+            "tags": [c["source"]],
+            "is_general_food": True
+        })
+
+    # 加入美食地圖店家的餐點 (同時過濾安全)
     for restaurant in RESTAURANT_CATALOG:
         for item in restaurant["items"]:
+            # 將 item 轉成類似 candidate 的 dict 來做 check_food_safety
+            c_item = {
+                "calories": item["calories"],
+                "protein": item["protein"],
+                "carbs": item["carbs"],
+                "fat": item["fat"],
+                "sodium": item["sodium"],
+                "gi": item.get("gi") or "medium",
+                "allergens": item.get("allergens") or [],
+            }
+            warnings = check_food_safety(c_item, 100, conditions, allergens, disease_rules)
+            if warnings:
+                continue
+                
             menu_items.append({
                 "restaurant_name": restaurant["name"],
                 "item_name": item["name"],
@@ -280,16 +343,20 @@ def build_recommendation_response(storage, nutrition_db: dict, tfda_db: dict, di
                 "carbs": item["carbs"],
                 "fat": item["fat"],
                 "sodium": item["sodium"],
-                "gi": item.get("gi", "low"),
-                "tags": restaurant["tags"]
+                "gi": item.get("gi") or "medium",
+                "tags": restaurant["tags"],
+                "is_general_food": False
             })
 
     preferences = user.get("preferences", "")
 
     # 組裝 Prompt 讓 Gemini 來從附近健康店家的菜單中做個人化挑選推薦
     prompt = (
-        f"請針對以下使用者的健康狀態、今日營養需求與口味偏好，從附近店家的健康菜單候選列表中，推薦最適合的健康日常餐點（大約 5 到 7 項）。\n"
-        f"【重要】請儘量多元化推薦，避免推薦多道極其相似或重複的餐點類型。\n\n"
+        f"請針對以下使用者的健康狀態、今日營養需求與口味偏好，從日常食材與附近店家的菜單候選列表中，推薦最適合的健康日常餐點（大約 5 到 7 項）。\n"
+        f"【重要】我們提供兩種推薦來源，請混合推薦以維持多樣性：\n"
+        f"1. 『日常推薦食材 (資料庫)』：這些是使用者平常喜歡吃、容易取得或與近期飲食習慣高度契合的食材與食品（例如水果、超商食品或家常菜）。請適度挑選 2-3 項推薦給他，幫助他維持平常的飲食習慣。對於這類品項，回傳的 name_zh 格式為 「[日常食材] 食物名稱」 (例如 「[日常食材] 富士蘋果」)。\n"
+        f"2. 附近健康店家的菜單餐點：這些是外食選擇，請挑選 3-4 項。對於這類品項，回傳的 name_zh 格式為 「[餐廳名稱] 菜單餐點名稱」 (例如 「[原型健康餐盒] 舒肥雞胸餐盒」)。\n"
+        f"請儘量多元化推薦，避免推薦多道極其相似或重複的餐點類型。\n\n"
         f"使用者基本檔案：\n"
         f"- 性別：{user.get('gender', '未知')}\n"
         f"- 今日熱量目標：{daily_target} kcal\n"
@@ -298,18 +365,18 @@ def build_recommendation_response(storage, nutrition_db: dict, tfda_db: dict, di
         f"- 過敏原限制：{', '.join(allergens) if allergens else '無'}\n"
         f"- 近期喜好的食物/口味：{', '.join(recent_foods) if recent_foods else '尚無飲食紀錄'}\n"
         f"- 個人口味與喜好設定：{preferences if preferences else '無'}\n\n"
-        f"健康店家菜單候選列表：\n"
+        f"健康日常食材與店家菜單候選列表：\n"
         f"{json.dumps(menu_items, ensure_ascii=False, indent=2)}\n\n"
-        f"請從菜單中挑選出適合他的餐點，並回傳一個 JSON 陣列。每個元素必須包含以下屬性：\n"
-        f"1. name_zh: 必須嚴格使用 「[餐廳名稱] 菜單餐點名稱」 的格式 (例如 「[原型健康餐盒] 舒肥雞胸餐盒」)\n"
-        f"2. calories: 菜單對應餐點的熱量 (kcal)\n"
+        f"請從列表中挑選出適合他的餐點，並回傳一個 JSON 陣列。每個元素必須包含以下屬性：\n"
+        f"1. name_zh: 餐點或食材名稱，請務必遵照上述兩種來源規规定的命名格式 (例如 「[日常食材] 富士蘋果」 或 「[原型健康餐盒] 舒肥雞胸餐盒」)\n"
+        f"2. calories: 熱量 (kcal)\n"
         f"3. protein: 蛋白質 (g)\n"
         f"4. carbs: 碳水化合物 (g)\n"
         f"5. fat: 脂肪 (g)\n"
         f"6. sodium: 鈉含量 (mg)\n"
         f"7. gi: 升糖指數類型 (low/medium/high)\n"
         f"8. safety_badges: 適合該使用者的安全標籤，例如 [\"低鈉\", \"高蛋白\", \"低 GI\"]，如無則回傳空陣列\n"
-        f"9. preference_reasons: 推薦理由陣列，解釋為什麼推薦這道菜（請用第二人稱「你」），例如 [\"符合你今日剩餘卡路里配額\", \"高蛋白有助於肌肉維持\", \"低鈉適合高血壓患者\"]\n"
+        f"9. preference_reasons: 推薦理由陣列，解釋為什麼推薦這道菜（請用第二人稱「你」），例如 [\"符合你今日剩餘卡路里配額\", \"高蛋白有助於肌肉維持\", \"符合你近期喜歡吃香蕉的習慣\"]\n"
         f"10. match_score: 契合度評分，介於 80 到 99 之間的整數\n\n"
         f"請只回傳合法 JSON 陣列，不要加入 markdown 包裹或多餘解釋。"
     )

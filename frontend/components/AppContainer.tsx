@@ -49,6 +49,7 @@ export default function AppContainer({ children, bottomPadding = 80 }: Props) {
           <ScrollView
             ref={scrollRef}
             showsVerticalScrollIndicator={false}
+            style={styles.scrollView}
             contentContainerStyle={[
               styles.scrollContent,
               {
@@ -69,15 +70,27 @@ const styles = StyleSheet.create({
   screen: {
     flex: 1,
     backgroundColor: Palette.bg.primary,
+    ...Platform.select({
+      web: {
+        height: '100vh',
+        overflow: 'hidden',
+      },
+    }),
   },
   outerContainer: {
     flex: 1,
+    height: Platform.OS === 'web' ? '100%' : undefined,
   },
   desktopOuter: {
     alignItems: 'center',
     backgroundColor: '#050508', // slightly darker bg for desktop sides
   },
   innerContainer: {
+    flex: 1,
+    width: '100%',
+    height: Platform.OS === 'web' ? '100%' : undefined,
+  },
+  scrollView: {
     flex: 1,
     width: '100%',
   },
