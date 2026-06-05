@@ -73,13 +73,14 @@ const styles = StyleSheet.create({
     ...Platform.select({
       web: {
         height: '100vh',
-        overflow: 'hidden',
+        overflowY: 'auto',
+        WebkitOverflowScrolling: 'touch',
       },
     }),
   },
   outerContainer: {
     flex: 1,
-    height: Platform.OS === 'web' ? '100%' : undefined,
+    height: Platform.OS === 'web' ? 'auto' : undefined,
   },
   desktopOuter: {
     alignItems: 'center',
@@ -88,10 +89,10 @@ const styles = StyleSheet.create({
   innerContainer: {
     flex: 1,
     width: '100%',
-    height: Platform.OS === 'web' ? '100%' : undefined,
+    height: Platform.OS === 'web' ? 'auto' : undefined,
   },
   scrollView: {
-    flex: 1,
+    flex: Platform.OS === 'web' ? undefined : 1,
     width: '100%',
   },
   scrollContent: {},
