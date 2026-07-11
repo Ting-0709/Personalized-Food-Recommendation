@@ -556,75 +556,14 @@ export default function RecommendScreen() {
 
           {!radarScanning && healthyData?.recommended?.length ? (
             <>
-              {/* 地圖渲染區塊 (Native 使用 react-native-maps，Web 使用雷達掃描模擬器) */}
+              {/* 地圖渲染區塊 (跨平台 MapBridge 支援：iOS/Android 使用 react-native-maps，Web 使用 Leaflet 開源互動地圖) */}
               <View style={styles.mapFrame}>
-                {Platform.OS !== 'web' ? (
-                  <MapBridge
-                    location={healthyData.location}
-                    restaurants={restaurantsList}
-                    onSelectRestaurant={setSelectedRestaurantId}
-                  />
-                ) : (
-                  // Web 平台：高質感雷達網格互動模擬地圖
-                  <View style={styles.webMapContainer}>
-                    <View style={styles.gridLines} />
-                    <View style={styles.radarCircles}>
-                      <View style={styles.circle1} />
-                      <View style={styles.circle2} />
-                      <View style={styles.circle3} />
-                    </View>
-
-                    {/* 雷達旋轉指針線 (Web 效果) */}
-                    <Animated.View
-                      style={[
-                        styles.radarWebSweep,
-                        {
-                          transform: [{ rotate: spin }],
-                        },
-                      ]}
-                    />
-
-                    {/* 使用者中心點 */}
-                    <View style={styles.userPulseDot}>
-                      <View style={styles.userCoreDot} />
-                    </View>
-
-                    {/* 模擬的店家在地圖打點 */}
-                    {restaurantsList.map((restaurant, idx) => {
-                      // 基於 index 生成不同的固定相對位置，模擬在四周
-                      const angles = [45, 135, 220, 315];
-                      const angle = angles[idx % angles.length];
-                      const distancePercent = 25 + (idx * 15) % 25; // 25% ~ 65%
-
-                      const rad = (angle * Math.PI) / 180;
-                      const leftPercent = 50 + distancePercent * Math.cos(rad);
-                      const topPercent = 50 + distancePercent * Math.sin(rad);
-
-                      const isActive = selectedRestaurantId === restaurant.restaurant_id;
-
-                      return (
-                        <Pressable
-                          key={restaurant.restaurant_id}
-                          onPress={() => setSelectedRestaurantId(restaurant.restaurant_id)}
-                          style={[
-                            styles.webMarker,
-                            { left: `${leftPercent}%`, top: `${topPercent}%` },
-                            isActive && styles.webMarkerActive,
-                          ]}
-                        >
-                          <Ionicons
-                            name="storefront"
-                            size={16}
-                            color={isActive ? Palette.text.inverse : Palette.accent.cyan}
-                          />
-                          <View style={styles.webMarkerCallout}>
-                            <Text style={styles.webMarkerText}>{restaurant.restaurant_name}</Text>
-                          </View>
-                        </Pressable>
-                      );
-                    })}
-                  </View>
-                )}
+                <MapBridge
+                  location={healthyData.location}
+                  restaurants={restaurantsList}
+                  onSelectRestaurant={setSelectedRestaurantId}
+                  selectedRestaurantId={selectedRestaurantId}
+                />
               </View>
 
               {/* 選中店家的推薦餐點 */}

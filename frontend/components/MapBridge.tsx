@@ -12,6 +12,7 @@ interface MapBridgeProps {
     distance_km: number;
   }>;
   onSelectRestaurant: (id: string) => void;
+  selectedRestaurantId?: string | null;
 }
 
 export default function MapBridge({ location, restaurants, onSelectRestaurant }: MapBridgeProps) {
